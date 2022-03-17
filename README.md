@@ -1,7 +1,7 @@
 # lua-fractal
 my pet fractal renderer
 
-very unfinished and probably really unoptimized but i mean it sorta works so yeah
+very unfinished and probably really unoptimized but i mean it sorta works so yeah (i'm eternally postponing improving it)
 
 runs on luvit (because i was making lua discord bots) but i don't see why it wouldn't work with luajit if you fix the require stuff
 
@@ -11,4 +11,18 @@ requires a few things:
 - lodepng dll if you want to texture it
 - i don't really like downloading 13948710932478134 dependancies because nothing ever seems to work, so ill try to keep this low idk
 
+do whatever you want with this 
 
+controls:
+- WASD: move
+- E/Q: zoom/unzoom
+- click: create a julia set of the mouse's location (kinda wonky sorry)
+- right click: change RE/IM of the julia set (relative to the center of the screen i think)
+- Z: switch to C double mode, or re-render the scene if already in it
+- enter: io.read()s a command, either recolor {craziness} {seed} {isdark} for rechanging the colors, or ptest to change it to lua perturbation thing test (does NOT work sowwy)
+- O/P: influence the luaswag uniform for use in textured fractals
+- arrow keys: change RE/IM of the julia set
+
+pretty important note: right now, the pallet for the fractals is sent to the shader through 3000 uniform floats which is terrible and bad practice as it should use a texture instead (wmakes this whole thing not work on a gtx 1070 which only supports like 1024 uniforms idk, but perfectly fine on my laptop's igpu) but should be pretty easy to fix if it affects you idk
+
+have fun and feel free to spam message me if you want something fixed or added or explained, i'll hopefully do my best to do it because i'm likely not doing anything better at the moment!!!!!!
