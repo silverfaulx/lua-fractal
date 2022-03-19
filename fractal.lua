@@ -25,7 +25,7 @@ local colorparams = {0.2, 292976, 0}--comment this line out if you want it to us
 local fractal = "cbship"
 
 --filepath or ""
-local texture, smoothtex = "boobs.png", true
+local texture, smoothtex = "", true
 --texture-specific uniform: luaswag
 local luaswagg = [[d = d * rotate(luaswag)]] --funny thing to do with textures, ex. d *= sin(u_time)
 --extra functions pasted right before main() im lazy sorry
@@ -39,7 +39,7 @@ mat2 rotate(float theta) {
 }
 ]]
 --true or false
-local orbitTrap = false
+local orbitTrap = true
 --valid ones: OrbitTraps.Point(re, im), OrbitTraps.Cross(re, im), OrbitTraps.Custom("equation for re, equation for im") ex: OrbitTraps.Custom("sin(zi), sin(zr)"); if multiple are used, then the distance is the minimum from all of them
 --local orbitParams = {OrbitTraps.Point(0.4, 0.7)}
 --pretty good: OrbitTraps.Custom([[-zr, -zi]]), [[d = d * rotate(luaswag)]]
@@ -377,8 +377,10 @@ void main(){
 	  #else
 	  float i2 = d;
 	  if (i < MAX_ITER) {
-		vec3 c1 = vec3(pal[int(floor(i2)*3)], pal[int(floor(i2)*3+1)], pal[int(floor(i2)*3+2)]);
-		vec3 c2 = vec3(pal[int(floor(i2+1)*3)], pal[int(floor(i2+1)*3+1)], pal[int(floor(i2+1)*3+2)]);
+		//vec3 c1 = vec3(pal[int(floor(i2)*3)], pal[int(floor(i2)*3+1)], pal[int(floor(i2)*3+2)]);
+		//vec3 c2 = vec3(pal[int(floor(i2+1)*3)], pal[int(floor(i2+1)*3+1)], pal[int(floor(i2+1)*3+2)]);
+		vec3 c1 = texture(pal, floor(i2)/COLORS).rgb;
+		vec3 c2 = texture(pal, floor(i2+1.)/COLORS).rgb;
 		col = mix(c1, c2, fract(d));
 		//col = vec3(d, d, d);
 		//col = texelFetch(texture, gl_FragCoord.x/u_resolution.x * TEXTURE_SIZE).xyz;
