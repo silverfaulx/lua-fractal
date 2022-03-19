@@ -13,7 +13,7 @@ do
                                const unsigned char* image, unsigned w, unsigned h);
 	]])
 	--lodepngh:close()
-	lodepng = ffi.load("C:\\Users\\goldi\\Documents\\why\\gltest\\lodepng.dll")
+	lodepng = ffi.load("lodepng.dll")
 end
 
 function mod.load(path)
