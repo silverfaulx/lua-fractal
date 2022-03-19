@@ -22,7 +22,7 @@ local colorparams = {0.2, 292976, 0}--comment this line out if you want it to us
 --mandelbrot, pmandelbrot, cmandelbar, shatteredheart, heart, pburningship, buffalo?, buffalo, cheart, quasiheart3rd+others, falsequasiheart4th
 --quasiheart5th, quasiburningship5th, bship, trigsin, TEST, funky, funky2, cbship, partialcbshipi, cmandelbrot, mandelbrot4th, bshiptrue
 
-local fractal = "mandelbrot"
+local fractal = "cbship"
 
 --filepath or ""
 local texture, smoothtex = "boobs.png", true
@@ -39,7 +39,7 @@ mat2 rotate(float theta) {
 }
 ]]
 --true or false
-local orbitTrap = true
+local orbitTrap = false
 --valid ones: OrbitTraps.Point(re, im), OrbitTraps.Cross(re, im), OrbitTraps.Custom("equation for re, equation for im") ex: OrbitTraps.Custom("sin(zi), sin(zr)"); if multiple are used, then the distance is the minimum from all of them
 --local orbitParams = {OrbitTraps.Point(0.4, 0.7)}
 --pretty good: OrbitTraps.Custom([[-zr, -zi]]), [[d = d * rotate(luaswag)]]
@@ -294,7 +294,8 @@ uniform float u_time;
 uniform float zoom;
 uniform float xo;
 uniform float yo;
-uniform float[COLORS * 3] pal;
+//uniform float[COLORS * 3] pal;
+uniform sampler1D pal;
 #ifdef TEXTURE
 uniform float luaswag;
 uniform sampler2D tex;
@@ -338,8 +339,10 @@ void main(){
 	float log_zn = log(zr * zr + zi * zi) / 2.;
 	float nu = log(log_zn / log(2.)) / log(2.);
 	float i2 = float(i) + 1. - nu;
-	vec3 c1 = vec3(pal[int(floor(i2)*3)], pal[int(floor(i2)*3+1)], pal[int(floor(i2)*3+2)]);
-	vec3 c2 = vec3(pal[int(floor(i2+1)*3)], pal[int(floor(i2+1)*3+1)], pal[int(floor(i2+1)*3+2)]);
+	//vec3 c1 = vec3(pal[int(floor(i2)*3)], pal[int(floor(i2)*3+1)], pal[int(floor(i2)*3+2)]);
+	//vec3 c2 = vec3(pal[int(floor(i2+1)*3)], pal[int(floor(i2+1)*3+1)], pal[int(floor(i2+1)*3+2)]);
+	vec3 c1 = texture(pal, floor(i2)/COLORS).rgb;
+	vec3 c2 = texture(pal, floor(i2+1.)/COLORS).rgb;
 	float r = fract(i2);
 	float r2 = abs(1. - r);
 	col = mix(c1, c2, r);
@@ -394,23 +397,22 @@ void main(){
 #include <stdio.h>
 #include <math.h>
 //LUAFILLER
-int fractal(const double xo, const double yo, const double zoom, const double* pal, float* colors) {
+int fractal(const double xo, const double yo, const double zoom, const float* pal, float* colors) {
 int total = 0;
 for(int ys = 0; ys < height; ys++) {
+	double y = y = ((double) ys / width - 0.5) / zoom + yo;
 	for(int xs = 0; xs < width; xs++) {
-		double x = ((double) xs / height - 0.5) / zoom + xo, y = ((double) ys / width - 0.5) / zoom + yo;
+		double x = ((double) xs / height - 0.5) / zoom + xo; 
 		int i = 0;
 		double zr = x, zi = y;
+		
 		while(i < MAX_ITER) {
 			if(zr*zr+zi*zi >= 4) { break; }
-			/*
-			double tzr = zr;
-			zr = zr * zr - zi * zi + x;
-			zi = 2. * tzr * zi + y;
-			i++;
-			*/
+			
 			//LUAEQ
+			
 		}
+		
 		if(i == MAX_ITER) {
 		colors[total * 3 + 0] = 0.;
 		colors[total * 3 + 1] = 0.;
@@ -426,8 +428,8 @@ for(int ys = 0; ys < height; ys++) {
 		int index2 = index + 3;
 		//printf("%i\n", index);
 		//printf("%i\n", index2);
-		double i;
-		double r = modf(i1, &i);
+		double i3;
+		double r = modf(i1, &i3);
 		double r2 = 1 - r;
 		//printf("%f, %f\n", r, i);
 		//printf("%f", pal[index]);
@@ -697,6 +699,8 @@ end
 return colors
 ]]
 
+--[[glsl perturbation theory]]local ptestglsl = [[]]
+
 local code = stcode
 local stcode2 = stcode
 
@@ -834,6 +838,17 @@ local function getTexturePNG(png) --get texture from lodepng png
 	gl.glTexImage2D(glc.GL_TEXTURE_2D, 0, glc.GL_RGBA, png.w, png.h, 0, glc.GL_RGBA, glc.GL_UNSIGNED_BYTE, png.t)
 	return tex[0]
 end
+local function getPalTex(pal, length)
+local tex = ffi.new("unsigned int[1]")
+	gl.glGenTextures(1, tex)
+	gl.glBindTexture(glc.GL_TEXTURE_1D, tex[0])
+	gl.glTexParameteri(glc.GL_TEXTURE_1D, glc.GL_TEXTURE_WRAP_S, glc.GL_CLAMP_TO_BORDER)
+	--gl.glTexParameteri(glc.GL_TEXTURE_2D, glc.GL_TEXTURE_WRAP_T, glc.GL_CLAMP_TO_BORDER)
+	gl.glTexParameteri(glc.GL_TEXTURE_1D, glc.GL_TEXTURE_MIN_FILTER, glc.GL_LINEAR);
+	gl.glTexParameteri(glc.GL_TEXTURE_1D, glc.GL_TEXTURE_MAG_FILTER, glc.GL_LINEAR);
+	gl.glTexImage1D(glc.GL_TEXTURE_1D, 0, glc.GL_RGB, length, 0, glc.GL_RGB, glc.GL_FLOAT, pal)
+	return tex[0]
+end
 local zoom, xo, yo, re, im, sre, sim, funny, curC, cTex = 1, 0, 0, 0, 0, false, false, 0, false, false
 local lpfunc = nil
 local function c(n, min, max) --clamp function
@@ -884,17 +899,19 @@ end
 local function getCCode(params)
 	local code, fractal = ccode, params.fractal
 	code = code:gsub([[//LUAFILLER]], "#define width " .. width .. "\n#define height " .. height .. "\n#define MAX_ITER 1000" .. "\n//LUAFILLER")
-	code = code:gsub([[//LUAEQ]], fractals[fractal]:gsub("float", "double"):gsub("abs", "fabs"))
-	--print(code .. "\n\n")
-	local cuw = cffi.compileRaw("int fractal(const double xo, const double yo, const double zoom, const double* pal, float* colors)", code)
+	code = code:gsub("//LUAEQ", string.gsub(fractals[fractal]:gsub("float", "double"), "abs", "fabs"))
+	print(code .. "\n\n")
+	local cuw = cffi.compileRaw("int fractal(const double xo, const double yo, const double zoom, const float* pal, float* colors)", code)
 	return cuw
 	--lodepng.encode("C:\\Users\\goldi\\Documents\\why\\gltest\\test.png", colors, width, height)
 end
 
 local function runCCode(cuw, params)
 	local colors = ffi.new("float[" .. params.height * params.width * 3 .. "]")
+	print("starting c thing")
 	local ret = cuw.fractal(params.xo, params.yo, params.zoom, params.pal, colors)
-	print(params.width, params.height)
+	print("done with c thing")
+	--print(params.width, params.height)
 	local tex = getTexture(nil, colors, params.width, params.height)
 	
 	print(tex)
@@ -1057,7 +1074,7 @@ local uniform1fv = glext.glUniform1fv
 local getUniformLocation = glext.glGetUniformLocation
 
 
-
+--[=[
 local istextured = false
 local gltex, gltex2, tex
 if texture ~= "" then
@@ -1081,7 +1098,7 @@ if texture ~= "" then
 	#define TEXTURE 1
 	//LUAFILLER
 	]])
-end
+end]=]
 
 local program = recompileShaders(getCode(base()))
 
@@ -1102,7 +1119,7 @@ local function updateTitle()
 	title[2] = "(julia, Re = " .. re .. ", Im = " .. im .. ")"
 	window:setTitle(table.concat(title, " "))
 end
-local posx, posy, mousedebounce = 0, 0, true
+local posx, posy, mousedebounce, palTex = 0, 0, true, getPalTex(pal, 1000)
 
 window:setSizeCallback(function(window, w, h)
 	width, height = w, h
@@ -1264,7 +1281,7 @@ while not window:shouldClose() do
 			print("the funny is on")
 			funny = 1
 			local t = base()
-			t.pal = remakepal("const double[3000]", table.unpack(colorparams))
+			--t.pal = remakepal("const double[3000]", table.unpack(colorparams))
 			curC = getCCode(t)
 			oxo, oyo, oz = 0, 0, 1
 			cTex = runCCode(curC, t)
@@ -1272,8 +1289,8 @@ while not window:shouldClose() do
 			program = recompileShaders(pngcode)
 		elseif funny == 1 then
 			local t = base()
-			t.pal = remakepal("const double[3000]", table.unpack(colorparams))
-			
+			--t.pal = remakepal("const double[3000]", table.unpack(colorparams))
+			gl.glDeleteTextures(1, ffi.new("unsigned int[1]", {cTex}))
 			oxo, oyo, oz = 0, 0, 1
 			cTex = runCCode(curC, t)
 			print(xo, yo, zoom)
@@ -1381,7 +1398,7 @@ while not window:shouldClose() do
 	uniform1f(getUniformLocation(program, "yo"), yo)
 	uniform1f(getUniformLocation(program, "re"), re)
 	uniform1f(getUniformLocation(program, "im"), im)
-	uniform1fv(getUniformLocation(program, "pal"), 3000, pal)
+	--uniform1fv(getUniformLocation(program, "pal"), 3000, pal)
 	--glext.glActiveTexture(glc.GL_TEXTURE0)
 	uniform1f(getUniformLocation(program, "luaswag"), luaswag)
 	if otex then
@@ -1389,6 +1406,7 @@ while not window:shouldClose() do
 		
 		gl.glBindTexture(glc.GL_TEXTURE_2D, otex[1])
 	end
+	gl.glBindTexture(glc.GL_TEXTURE_1D, palTex)
 	useProgram(program)
 	
 	else
