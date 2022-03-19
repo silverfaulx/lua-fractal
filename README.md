@@ -23,6 +23,6 @@ controls:
 - O/P: influence the luaswag uniform for use in textured fractals
 - arrow keys: change RE/IM of the julia set
 
-pretty important note: right now, the pallet for the fractals is sent to the shader through 3000 uniform floats which is terrible and bad practice as it should use a texture instead (wmakes this whole thing not work on a gtx 1070 which only supports like 1024 uniforms idk, but perfectly fine on my laptop's igpu) but should be pretty easy to fix if it affects you idk
+i think i fixed the thing with the 3000 uniforms lol
 
 have fun and feel free to spam message me if you want something fixed or added or explained, i'll hopefully do my best to do it because i'm likely not doing anything better at the moment!!!!!!
