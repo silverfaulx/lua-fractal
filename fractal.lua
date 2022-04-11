@@ -16,18 +16,18 @@ local cffi = require("cffi")
 --craziness, seed, isdark; or nil
 --818429, 52105; craziness: 0.2, seed: 499072, isdark: 1; craziness: 0.2, seed: 468010, isdark: 0; 0.2, 123, 0; PINK AND YELLOW craziness: 0.2, seed: 292976, isdark: 0
 local colorparams = {0.2, 292976, 0}--comment this line out if you want it to use a random color pallete
-
+local ogcoloring = true --overrides colorparams and textures
 --print(lodepng.load("kurumi.png").w)--test
 
 --mandelbrot, pmandelbrot, cmandelbar, shatteredheart, heart, pburningship, buffalo?, buffalo, cheart, quasiheart3rd+others, falsequasiheart4th
 --quasiheart5th, quasiburningship5th, bship, trigsin, TEST, funky, funky2, cbship, partialcbshipi, cmandelbrot, mandelbrot4th, bshiptrue
 
-local fractal = "cbship"
+local fractal = "bshiptrue"
 
 --filepath or ""
-local texture, smoothtex = "", true
---texture-specific uniform: luaswag
-local luaswagg = [[d = d * rotate(luaswag)]] --funny thing to do with textures, ex. d *= sin(u_time)
+local texture, smoothtex = "feet.png", false
+--texture-specific uniform: luaswag (make sure to treat d like a vec4 if tex4d is on)
+local luaswagg = [[d.rb = d.rb * rotate(luaswag)]] --funny thing to do with textures, ex. d *= sin(u_time)
 --extra functions pasted right before main() im lazy sorry
 local extras = [[
 mat2 rotate(float theta) {
@@ -43,9 +43,14 @@ local orbitTrap = true
 --valid ones: OrbitTraps.Point(re, im), OrbitTraps.Cross(re, im), OrbitTraps.Custom("equation for re, equation for im") ex: OrbitTraps.Custom("sin(zi), sin(zr)"); if multiple are used, then the distance is the minimum from all of them
 --local orbitParams = {OrbitTraps.Point(0.4, 0.7)}
 --pretty good: OrbitTraps.Custom([[-zr, -zi]]), [[d = d * rotate(luaswag)]]
-local orbitParams = {OrbitTraps.Custom([[-zr, -zi]])} 
+--if tex4d and quaternion are both on, make sure to use the 4D versions! (Point4D(r,i,j,k) or Custom4D(equations for r,i,j,k))
+local orbitParams = {OrbitTraps.Custom4D([[sin(zi), sin(zr), sin(zk), sin(zj)]])} 
 --orbit trap must be true to use texture; use "" for no texture
 
+--toggle quaternion, quaternion orbit trap; tex4d is only used if quaternion is true, and it tells the program that we're using 4d orbit traps. Use it to specify what 2 components of the minimum distance should be used for the texture u, v coordinates or something idk like "rg" or "ra"
+local quaternion, tex4d = false, "rb"
+--     ^adds j and k values to the fractal or something. right now, theyre both controlled by a uniform changed by the arrow keys, but if you wanna mess around with the axis stuff, do it in the glsl code. hopefully sometime ill come up with a way to edit it from here idk
+--honestly idk if tex4d even does much but oh well
 local textures = {} --loaded textures
 local fractals = { --hardcode for the above fractals
 	TEST = [[
@@ -271,10 +276,47 @@ local fractals = { --hardcode for the above fractals
     zi = -abs(zi * (5. * zrsqrsqr - 10. * zrzisqr + zisqrsqr)) + y;
     i++;
 	]],
+	QUATERNIONS = {
+		mandelbrot = [[
+		float tzr = zr, tzi = zi, tzj = zj, tzk = zk;
+		zr = zr*zr - zi*zi - zj*zj - zk*zk + x;
+		zi = 2. * zi * tzr + y;
+		zj = 2. * zj * tzr + uniform_j;
+		zk = 2. * zk * tzr + uniform_k;
+		i++;
+		]]
+	
+	
+	
+	}
 }
+do
+local zr, zi, zj, zk = 1, 2, 3, 4
+local zr2, zi2, zj2, zk2 = 1, 2, 3, 4
+zr, zi, zj, zk = --quaternion multiplication
+zr*zr2 - zi*zi2 - zj*zj2 - zk*zk2,
+zr*zi2 + zi*zr2 + zj*zk2 - zk*zj2,
+zr*zj2 - zi*zk2 + zj*zr2 + zk*zi2,
+zr*zk2 + zi*zj2 - zj*zi2 + zk*zr2
+print(zr, zi, zj, zk)
+zr, zi, zj, zk = 1, 2, 3, 4
+zr, zi, zj, zk = --squaring a quaternion ({1,2,3,4} here should be equal to {1,2,3,4}*{1,2,3,4} above obviously)
+zr*zr - zi*zi - zj*zj - zk*zk,
+zr*zi + zi*zr + zj*zk - zk*zj,
+zr*zj - zi*zk + zj*zr + zk*zi,
+zr*zk + zi*zj - zj*zi + zk*zr
+print(zr, zi, zj, zk)
+zr, zi, zj, zk = 1, 2, 3, 4
+zr, zi, zj, zk = --squaring a quaternion but better (redundant and unnecessary things removed)
+zr*zr - zi*zi - zj*zj - zk*zk,
+2 * zi*zr,
+2 * zr*zj,
+2 * zr*zk
+print(zr, zi, zj, zk)
+end
 
 if not fractals[fractal] then error(fractal .. " isnt here") end
-
+if quaternion then if not fractals.QUATERNIONS[fractal] then error(fractal .. " has not been made into a quaternion version!") end end 
 local title = {fractal, "", "float mode"} --fractal name, julia set, idk
 
 --[[main glsl code]]local stcode = [[ 
@@ -284,9 +326,6 @@ precision highp float;
 #endif
 #define MAX_ITER 1000
 #define COLORS 1000
-#define product(a, b) vec2(a.x*b.x-a.y*b.y, a.x*b.y+a.y*b.x)
-#define conjugate(a) vec2(a.x,-a.y)
-#define divide(a, b) vec2(((a.x*b.x+a.y*b.y)/(b.x*b.x+b.y*b.y)),((a.y*b.x-a.x*b.y)/(b.x*b.x+b.y*b.y)))
 #define AA /*LUAAA*/
 //LUAFILLER
 uniform vec2 u_resolution;
@@ -305,19 +344,33 @@ void main(){
   float x = (gl_FragCoord.x / u_resolution.x - 0.5) / zoom + xo;
   float y = (gl_FragCoord.y / u_resolution.y - 0.5) / zoom + yo;
   float zr = x, zi = y;
+  #ifdef QUATER
+  float zj = uniform_j, zk = uniform_k; //AUTOMATE THIS PART SOMETIME FROM LUA FOR QUATERNION STUFF
+  #endif
   #ifdef ORBIT
   
 	  #ifdef TEXTURE
+	  #ifdef TEX4D
+	  vec4 d = vec4(1000000., 1000000., 1000000., 1000000.);
+	  vec4 point;
+	  #else
 	  vec2 d = vec2(1000000., 1000000.);
+	  vec2 point;
+	  #endif
 	  #else
 	  float d = 1000000.;
+	  vec2 point;
 	  #endif
 	  
-  vec2 point;
+  
   #endif
   int i = 0;
   while(i < MAX_ITER) {
-  	if(zr * zr + zi * zi >= 4.) { break; }
+	#ifdef QUATER
+	if(zr * zr + zi * zi + zj * zj + zk * zk >= 65536.) { break; }
+	#else
+	if(zr * zr + zi * zi >= 65536.) { break; }
+	#endif
 
   /*
     if(zr * zr + zi * zi >= 4.) { break; }
@@ -336,8 +389,13 @@ void main(){
   vec3 col;
   #ifndef ORBIT
   if (i < MAX_ITER) {
-	float log_zn = log(zr * zr + zi * zi) / 2.;
-	float nu = log(log_zn / log(2.)) / log(2.);
+	
+	//float log_zn = log(zr * zr + zi * zi) / 2.;
+	//float nu = log(log_zn / log(2.)) / log(2.);
+	float nu = log2(log2(zr*zr+zi*zi));
+	#ifdef OGCOLOR
+		col = 0.5 + 0.5*cos(3. + (float(i)+1.-nu)*0.15 + vec3(0., 0.4, 1.));
+	#else
 	float i2 = float(i) + 1. - nu;
 	//vec3 c1 = vec3(pal[int(floor(i2)*3)], pal[int(floor(i2)*3+1)], pal[int(floor(i2)*3+2)]);
 	//vec3 c2 = vec3(pal[int(floor(i2+1)*3)], pal[int(floor(i2+1)*3+1)], pal[int(floor(i2+1)*3+2)]);
@@ -346,6 +404,7 @@ void main(){
 	float r = fract(i2);
 	float r2 = abs(1. - r);
 	col = mix(c1, c2, r);
+	#endif
   } else {
 	col = vec3(0., 0., 0.);
   }
@@ -354,23 +413,7 @@ void main(){
   #else
 	  #ifdef TEXTURE
 	  if (i < MAX_ITER) {
-		#ifdef TEXSMOOTH
-		float log_zn = log(zr * zr + zi * zi) / 2.;
-		float nu = log(log_zn / log(2.)) / log(2.);
-		float i2 = float(i) + 1. - nu;
-		float r = fract(i2);
-		/*LUASWAGG*/;
-		//gsubbed here: IMAGE_WIDTH, IMAGE_HEIGHT
-		vec2 uv = fract(d);
-		uv.x += floor(i2) / MAX_ITER / IMAGE_WIDTH;
-		uv.y += (floor(i2) / MAX_ITER + 1) / IMAGE_HEIGHT;
-		vec3 c1 = texture(tex, fract(d)).rgb;
-		vec3 c2 = texture(tex, uv).rgb;
-		col = mix(c1, c2, r);
-		#else
-		/*LUASWAGG*/;
-		col = texture(tex, fract(d)).rgb;
-		#endif
+		//LUATEXING
 	  } else {
 		col = vec3(0., 0., 0.);
 	  }
@@ -388,7 +431,6 @@ void main(){
 		col = vec3(0., 0., 0.);
 	  }
 	  //gl_FragColor = i == MAX_ITER ? vec4(0., 0., 0., 1.) : vec4(pal[i*3], pal[i*3+1], pal[i*3+2], 1.);
-	  
 	  #endif
   #endif
   gl_FragColor = vec4(col, 1.);
@@ -533,24 +575,18 @@ return colors
 --[[lua perturbation theory test]]local ptest = [[
 --defined by environment: gmp, pallete
 --gsubbed: MAX_ITER
---xo, yo, and zoom are all mpf()s
+--xo and yo are all mpf()s
 local args = {...}
-local width, height, total, xo, yo, zoom, xr, xi = args[1], args[2], 0, args[3], args[4], args[5], args[6] or 0, args[7] or 0
-print("xo, yo, zoom: ", gmp.f_get_d(xo), gmp.f_get_d(yo), gmp.f_get_d(zoom))
+local width, height, total, xo, yo, zoom, xr, xi, radius = args[1], args[2], 0, args[3], args[4], args[5], args[6] or 0, args[7] or 0, args[8]
+print(radius)
+print("xo, yo, zoom: ", gmp.f_get_d(xo), gmp.f_get_d(yo), zoom)
 local log, abs, floor = math.log, math.abs, math.floor
 local colors = ffi.new("float[" .. width * height * 3 .. "]")
 local total = 0
 local mpf = gmp.types.f
-local radius
-do
-	local r = mpf()
-	gmp.f_init(r)
-	local cum = mpf()
-	gmp.f_init_set_d(cum, 1)
-	gmp.f_div(r, cum, zoom)
-	radius = gmp.f_get_d(r)
-end
-print(radius)
+
+
+--print(radius)
 --local radius = 1 / gmp.f_get_d(zoom)
 
 local refZR, refZI, refI = mpf(), mpf(), {}
@@ -565,8 +601,10 @@ do
 	local i = 0
 	local x, y = mpf(), mpf()
 	gmp.f_init(x) gmp.f_init(y)
+	--gmp.f_div(x, xo, zoom) gmp.f_div(y, yo, zoom)
 	--gmp.f_div(x, xo, zoom)
 	--gmp.f_div(y, yo, zoom)
+	gmp.f_add(x, x, xo) gmp.f_add(y, y, yo)
 	--[=[
 	do
 		local ad = mpf()
@@ -577,12 +615,23 @@ do
 		gmp.f_add(y, y, ad2)
 	end]=]
 	
+	local cumzr, cumzi = mpf() mpf()
+	local xn_r, xn_i = mpf(), mpf()
+	gmp.f_init_set(xn_r, xo)
+	gmp.f_init_set(xn_i, yo)
+	local re, im = mpf(), mpf()
+	gmp.f_init(re) gmp.f_init(im)
+	--gmp.f_sub(x, x, xo)
+	--gmp.f_sub(y, y, yo)
 	--gmp.f_div(x, x, zoom)
 	--gmp.f_div(y, y, zoom)
-	gmp.f_add(x, x, xo)
-	gmp.f_add(y, y, yo)
+	
+	local xn_r_sq = mpf() gmp.f_init(xn_r_sq)
+	local xn_i_sq = mpf() gmp.f_init(xn_i_sq)
 	
 	while i < MAX_ITER do
+		refI[i*2] = gmp.f_get_d(refZR)
+		refI[i*2+1] = gmp.f_get_d(refZI)
 		gmp.f_mul(zrsqr, refZR, refZR)
 		gmp.f_mul(zisqr, refZI, refZI)
 		gmp.f_add(zadd, zrsqr, zisqr)
@@ -595,13 +644,26 @@ do
 	--	local zr, zi = mpf(), mpf()
 	--	gmp.f_init_set(zr, refZR)
 	--	gmp.f_init_set(zi, refZI)
-		refI[i*2] = gmp.f_get_d(refZR)
-		refI[i*2+1] = gmp.f_get_d(refZI)
+		
+		--[=[
+		gmp.f_add(re, xn_r, xn_r)
+		gmp.f_add(im, xn_i, xn_i)
+		refI[i*2] = gmp.f_get_d(re)
+		refI[i*2+1] = gmp.f_get_d(im)
+		
+		gmp.f_mul(xn_r_sq, xn_r, xn_r)
+		gmp.f_mul(xn_i_sq, xn_i, xn_i)
+		gmp.f_sub(xn_r, xn_r_sq, xn_i_sq)
+		gmp.f_sub(xn_r, xn_r, xo)
+		
+		gmp.f_mul(xn_i, re, xn_i)
+		gmp.f_sub(xn_i, xn_i, yo)
+		]=]
 		i = i + 1
 	end
 	print("length of refI: ", #refI)
 	if i ~= MAX_ITER then
-		print("point escapes, filling with zeroes :3")
+		print("point escapes, filling with zeroes :3 (find a new point dumbass)")
 		for j = i*2, MAX_ITER*2-1 do
 			refI[j] = 0
 		end
@@ -615,17 +677,20 @@ for xs = 0, height-1 do
 		local dim = (-radius * (2 * xs - width)) / width
 		local dre2 = ((radius * (2 * ys - height)) / height) - dre 
 		local dre2 = ((radius * (2 * xs - width)) / width) - dim
-		local zr = radius * (2 * ys - height) / height
-		local zi = -radius * (2 * xs - width) / width
-		local i = 0
-		local zro, zio = zr + refI[0], zi - refI[1]
+		--local zr = radius * (2 * ys - height) / height
+		--local zi = -radius * (2 * xs - width) / width
+		local zr, zi = 0, 0
+		local i = 1
+		--local zro, zio = zr, zi
+		local zro, zio = radius * (2 * ys - height) / height, -radius * (2 * xs - width) / width
+		
 		--print(zr, zi, i)
 		while i < MAX_ITER do
 			if (zr*zr + zi*zi > 4) then break end
 			--zr, zi, i = zr * (refI[i*2] + zr) + zro, zi * (refI[i*2+1] + zi) + zio, i+1
 			--zr = zr * (zr*refI[i*2] - zi * refI[i*2+1]) + zro
 			--zi = zi * 2 * (zi * refI[i*2] + zi * refI[i*2+1]) + zio
-			zr, zi = zr*refI[i*2] + zr*zr - zi*refI[i*2+1] - zi*zi + zro, zr*refI[i*2+1] + 2*zr*zi + zi*refI[i*2] + zio
+			zr, zi = zr*refI[i*2] + zr*zr - zi*refI[i*2+1] - zi*zi + zro, zr*refI[i*2+1] + 2*zr*zi + zi*refI[i*2+1] + zio
 			i = i + 1
 		end
 		
@@ -701,7 +766,35 @@ end
 return colors
 ]]
 
---[[glsl perturbation theory]]local ptestglsl = [[]]
+--[[glsl perturbation theory]]local ptestglsl = [[
+#version 420
+#ifdef GL_ES
+precision highp float;
+#endif
+#define MAX_ITER 1000
+#define COLORS 1000
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform float zoom;
+uniform float xo;
+uniform float yo;
+uniform float radius;
+uniform sampler1D pal;
+uniform sampler1D ref;
+//LUAFILLER
+void main() {
+
+}
+
+]]
+
+--[[c perturbation theory]]local pctest = [[
+
+]]
+
+--[[quaternion ones because im bored]]local qcode = [[
+
+]]
 
 local code = stcode
 local stcode2 = stcode
@@ -719,79 +812,6 @@ while i < mi do
 end
 print(table.concat(list, ", "))
 end]]
-
---[=[
-if DOUBLEMODE then
-	--code = code:gsub("main%(%).$", "double")
-	code = code:gsub("float", "double")
-	code = code:gsub("//LUAFILLER", [[
-#define log(n) log(float(n))
-//LUAFILLER
-	]])
-	code = code:gsub("vec3", "dvec3")
-	code = code:gsub("uniform double", "uniform float")
-	--code = code:gsub("log%(.+%)", "log(float(")
-end]=]
---[[
-if fractal == "mandelbrot" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "pmandelbrot" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "cmandelbar" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "shatteredheart" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "heart" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "pburningship" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "buffalo?" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "buffalo" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "cheart" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "quasiheart3rdspiky" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "quasiheart3rdweird" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "quasiheart3rd" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "quasiheart3rdcrazy" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "falsequasiheart4th" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "quasiheart5th" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "quasiburningship5th" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "TEST" then
-	code = code:gsub("//LUAEQ", )
-elseif fractal == "bship" then
-	code = code:gsub("//LUAEQ", )
-end
-]]
---[[
-int i;
-float zr, zi;
-zr, zi = sin(zr) * cosh(zi), cos(zr) * sinh(zi)
-
-float tzr = zr;
-zr = zr * zr - zi * zi + x;
-zi = 2. * tzr * zi + y;
-i++;
-
---failed sin(z) + c
-float tzr = zr;
-    zr = sin(zr * zr) * cosh(zi * zi) + x;
-    zi = 2. * cos(tzr * tzr) * sinh(zi * zi) + y;
-    i++;
-	
-	
---click a pixel to create a julia set of that pixel
---some key to switch it to double mode for a single render
---another key to (maybe) switch it to gmp mode for a single render
-]]
 local gl, glc, glu, glfw, glext = lj_glfw.libraries()
 
 lj_glfw.init()
@@ -895,13 +915,18 @@ end
 
 local function base() --dumb function to get default global whatever stuff idk
 	return {double = DOUBLEMODE, orbitTrap = orbitTrap, orbitParams = orbitParams, fractal = fractal, height = height, width = width,
-	xo = xo, yo = yo, zoom = zoom, pal = pal, texture = texture
+	xo = xo, yo = yo, zoom = zoom, pal = pal, texture = texture, quaternion = quaternion, tex4d = tex4d, ogcoloring = ogcoloring
 	}
 end
 local function getCCode(params)
 	local code, fractal = ccode, params.fractal
 	code = code:gsub([[//LUAFILLER]], "#define width " .. width .. "\n#define height " .. height .. "\n#define MAX_ITER 1000" .. "\n//LUAFILLER")
-	code = code:gsub("//LUAEQ", string.gsub(fractals[fractal]:gsub("float", "double"), "abs", "fabs"))
+	local ahh = fractals[fractal]
+	ahh = ahh:gsub("float", "double")
+	ahh = ahh:gsub("abs", "fabs")
+	--code = code:gsub("//LUAEQ", string.gsub(fractals[fractal]:gsub("float", "double"), "abs", "fabs"))
+	print(ahh)
+	code = code:gsub("//LUAEQ", ahh)
 	print(code .. "\n\n")
 	local cuw = cffi.compileRaw("int fractal(const double xo, const double yo, const double zoom, const float* pal, float* colors)", code)
 	return cuw
@@ -922,58 +947,123 @@ end
 local otex = false
 --params: {double = true/nil, orbitTrap = true/nil, texture = 'texture'/nil, orbitParams = {list of orbit traps to be concatenated}, julia = true/nil}
 local function getCode(params) --converts the base glsl code into the actual working code
-	local code, fractal = stcode, params.fractal
+	local code, fractal = stcode, params.fractal or fractal
 	code = code:gsub("//LUAEXTRAS", extras)
-	if params.orbitTrap then
-		code = code:gsub("//LUAFILLER", [[
-#define ORBIT 1
+	if params.quaternion then
+			code = code:gsub("//LUAFILLER", [[
+#define QUATER 1
+uniform float uniform_j;
+uniform float uniform_k;
 //LUAFILLER
 		]])
-		if params.texture and params.texture ~= "" then
-			local textu
-			if not textures[params.texture] then --load the texture
-				textu = lodepng.load(params.texture)
-				assert(textu, "failed to load texture " .. params.texture)
-				textu[1] = getTexturePNG(textu)
-			end
-			local text = textures[params.texture]
+		fractal = fractals.QUATERNIONS[fractal]
+	else fractal = fractals[fractal] end
+	if params.ogcoloring then
+		code = code:gsub("//LUAFILLER", [[
+#define OGCOLOR 1
+//LUAFILLER	
+]])
+	else
+		if params.orbitTrap then
 			code = code:gsub("//LUAFILLER", [[
-#define TEXTURE 1
-//LUAFILLER
+	#define ORBIT 1
+	//LUAFILLER
 			]])
-			local cuny = table.concat(params.orbitParams, [[
-			d = min(d, abs(point - vec2(zr, zi)));
-			]])
-			code = code:gsub("/%*LUASWAGG%*/", luaswagg)
-			code = code:gsub("//LUAORBIT", cuny:sub(1, #cuny-1))--idk why it needs the :sub(1, #cunt-1) but it does because theres a rogue 1 otherwise
-			if smoothtex then
-				print("beware the texture is smoothed or whatever")
-				code = code:gsub("//LUAFILLER", [[
-#define TEXSMOOTH 1
-//LUAFILLER]])
-				code = code:gsub("IMAGE_HEIGHT", tostring(textu.h))
-				code = code:gsub("IMAGE_WIDTH", tostring(textu.w))
+			params.tex4d = params.quaternion and params.tex4d
+			if params.tex4d then
+			code = code:gsub("//LUAFILLER", [[
+	#define TEX4D 1
+	//LUAFILLER]])
 			end
-			otex = text
-			
-		else
-			local cunt = table.concat(params.orbitParams, [[
-			d = min(d, abs(length(vec2(zr, zi) - point)));
-			]])--make the code take the minimum of all provided orbit traps
-			code = code:gsub("//LUAORBIT", cunt:sub(1, #cunt-1))--idk why it needs the :sub(1, #cunt-1) but it does because theres a rogue 1 otherwise
+			if params.texture and params.texture ~= "" then
+				local textu
+				if not textures[params.texture] then --load the texture
+					textu = lodepng.load(params.texture)
+					assert(textu, "failed to load texture " .. params.texture)
+					textu[1] = getTexturePNG(textu)
+				end
+				local text = textures[params.texture]
+				code = code:gsub("//LUAFILLER", [[
+	#define TEXTURE 1
+	//LUAFILLER
+				]])
+				local luatexing = [[
+	#ifdef TEXSMOOTH
+		float log_zn = log(zr * zr + zi * zi) / 2.;
+		float nu = log(log_zn / log(2.)) / log(2.);
+		float i2 = float(i) + 1. - nu;
+		float r = fract(i2);
+		/*LUASWAGG*/;
+		//gsubbed here: IMAGE_WIDTH, IMAGE_HEIGHT
+		
+		vec2 uv = fract(dd);
+		
+		uv.x += floor(i2) / MAX_ITER / IMAGE_WIDTH;
+		uv.y += (floor(i2) / MAX_ITER + 1) / IMAGE_HEIGHT;
+		vec3 c1 = texture(tex, fract(dd)).rgb;
+		vec3 c2 = texture(tex, uv).rgb;
+		col = mix(c1, c2, r);
+	#else
+		/*LUASWAGG*/;
+		col = texture(tex, fract(dd)).rgb;
+	#endif]]
+				local cuny
+				if params.tex4d then
+					cuny = table.concat(params.orbitParams, [[
+					d = min(d, abs(point - vec4(zr, zi, zj, zk)));
+					]])
+					luatexing = luatexing:gsub("dd", "d." .. params.tex4d:sub(1,2))
+				else
+					cuny = table.concat(params.orbitParams, [[
+					d = min(d, abs(point - vec2(zr, zi)));
+					]])
+					luatexing = luatexing:gsub("dd", "d")
+				end
+				code = code:gsub("//LUATEXING", luatexing)
+				code = code:gsub("/%*LUASWAGG%*/", luaswagg)
+				code = code:gsub("//LUAORBIT", cuny:sub(1, #cuny-1))--idk why it needs the :sub(1, #cunt-1) but it does because theres a rogue 1 otherwise
+				if smoothtex then --i should remove this, it doesnt do anything cool (only slightly alters the image from what ive seen) and takes up room
+					print("beware the texture is smoothed or whatever")
+					code = code:gsub("//LUAFILLER", [[
+	#define TEXSMOOTH 1
+	//LUAFILLER]])
+					code = code:gsub("IMAGE_HEIGHT", tostring(textu.h))
+					code = code:gsub("IMAGE_WIDTH", tostring(textu.w))
+				end
+				otex = text
+				
+			else
+				local cunt = table.concat(params.orbitParams, [[
+				d = min(d, abs(length(vec2(zr, zi) - point)));
+				]])--make the code take the minimum of all provided orbit traps
+				code = code:gsub("//LUAORBIT", cunt:sub(1, #cunt-1))--idk why it needs the :sub(1, #cunt-1) but it does because theres a rogue 1 otherwise
+			end
 		end
 	end
-	
 	if params.julia then --make the equation a julia set and also make re and im uniform floats
+		if params.quaternion then
 		code = code:gsub(
-		"//LUAEQ",fractals[fractal]:gsub("x", "re"):gsub("y", "im")
+		"//LUAEQ",fractal:gsub("x", "re"):gsub("y", "im")
 			):gsub("//LUAFILLER", [[
 			uniform float re;
 			uniform float im;
 			//LUAFILLER
 			]])
+		else
+		code = code:gsub(
+		"//LUAEQ",fractal:gsub("x", "re"):gsub("y", "im")
+			):gsub("//LUAFILLER", [[
+			uniform float re;
+			uniform float im;
+			//LUAFILLER
+			]])
+		end
 	else
-		code = code:gsub("//LUAEQ", fractals[fractal])--put the actual fractal code inside
+		
+			--code = code:gsub("//LUAEQ", fractals.QUATERNIONS[fractal])
+		
+			code = code:gsub("//LUAEQ", fractal)--put the actual fractal code inside
+		
 	end
 	
 	if params.double then --logic for double mode i think, but dont use it
@@ -1105,12 +1195,12 @@ end]=]
 local program = recompileShaders(getCode(base()))
 
 
-
+--[[
 do
 local t = base()
 t.pal = remakepal("const double[3000]", 0.2, 123, 0)
 print(getCCode(t))
-end
+end]]
 
 
 
@@ -1121,7 +1211,7 @@ local function updateTitle()
 	title[2] = "(julia, Re = " .. re .. ", Im = " .. im .. ")"
 	window:setTitle(table.concat(title, " "))
 end
-local posx, posy, mousedebounce, palTex = 0, 0, true, getPalTex(pal, 1000)
+local posx, posy, mousedebounce, palTex, q_j, q_k = 0, 0, true, getPalTex(pal, 1000), 0, 0
 
 window:setSizeCallback(function(window, w, h)
 	width, height = w, h
@@ -1160,7 +1250,7 @@ local function split(s) --string split function
 	return t
 end
 
-local mpf, xr, xi = gmp.types.f, nil, nil
+local mpf, xr, xi, radius = gmp.types.f, nil, nil, 1
 local oxo, oyo, oz
 updateTitle()
 while not window:shouldClose() do
@@ -1232,12 +1322,15 @@ while not window:shouldClose() do
 	if keyw == glc.GLFW_PRESS then
 		if oz then oz = oz + oz * dt end
 		if funny == 2 then
+			
 			local spd = mpf()
 			gmp.f_init_set_d(spd, speed)
 			local dt2 = mpf()
 			gmp.f_init_set_d(dt2, dt)
 			gmp.f_mul(spd, spd, dt2)
 			gmp.f_add(zoom, zoom, spd)
+			radius = radius - (radius) * dt
+			print("RADIUS: ", radius)
 		else
 			zoom = zoom + zoom * dt
 		end
@@ -1246,31 +1339,50 @@ while not window:shouldClose() do
 	if keyw == glc.GLFW_PRESS then
 		if oz then oz = oz - oz * dt end
 		if funny == 2 then
+			
 			local spd = mpf()
 			gmp.f_init_set_d(spd, speed)
 			local dt2 = mpf()
 			gmp.f_init_set_d(dt2, dt)
 			gmp.f_mul(spd, spd, dt2)
 			gmp.f_sub(zoom, zoom, spd)
+			radius = radius + (radius) * dt
+			print("RADIUS: ", radius)
 		else
 			zoom = zoom - zoom * dt
 		end
 	end
 	keyw = window:getKey(glc.GLFW_KEY_UP)
 	if keyw == glc.GLFW_PRESS then
+		if quaternion then
+		q_j = q_j + (speed / zoom) * dt * 0.2
+		else
 		im = im + (speed / zoom) * dt * 0.5
+		end
 	end
 	keyw = window:getKey(glc.GLFW_KEY_DOWN)
 	if keyw == glc.GLFW_PRESS then
+		if quaternion then
+		q_j = q_j - (speed / zoom) * dt * 0.2
+		else
 		im = im - (speed / zoom) * dt * 0.5
+		end
 	end
 	keyw = window:getKey(glc.GLFW_KEY_LEFT)
 	if keyw == glc.GLFW_PRESS then
+		if quaternion then
+		q_k = q_k + (speed / zoom) * dt * 0.2
+		else
 		re = re + (speed / zoom) * dt * 0.5
+		end
 	end
 	keyw = window:getKey(glc.GLFW_KEY_RIGHT)
 	if keyw == glc.GLFW_PRESS then
+		if quaternion then
+		q_k = q_k - (speed / zoom) * dt * 0.2
+		else
 		re = re - (speed / zoom) * dt * 0.5
+		end
 	end
 	keyw = window:getKey(glc.GLFW_KEY_R)
 	if keyw == glc.GLFW_PRESS then
@@ -1286,6 +1398,7 @@ while not window:shouldClose() do
 			--t.pal = remakepal("const double[3000]", table.unpack(colorparams))
 			curC = getCCode(t)
 			oxo, oyo, oz = 0, 0, 1
+			
 			cTex = runCCode(curC, t)
 			
 			program = recompileShaders(pngcode)
@@ -1307,7 +1420,8 @@ while not window:shouldClose() do
 		elseif funny == 2 then
 			--make thing
 			oxo, oyo, oz = 0, 0, 1
-			cTex = getTexture(nil, curC(width, height, xo, yo, zoom, xr, xi), width, height)
+			gl.glDeleteTextures(1, ffi.new("unsigned int[1]", {cTex}))
+			cTex = getTexture(nil, curC(width, height, xo, yo, zoom, xr, xi, radius), width, height)
 		end
 	end
 	keyw = window:getKey(glc.GLFW_KEY_ENTER) --commands
@@ -1318,9 +1432,10 @@ while not window:shouldClose() do
 			local ret = split(ans)
 			if ret[1] == "recolor" then
 				pal = remakepal(pal, tonumber(ret[2] or 0.1) or 0.1, tonumber(ret[3] or rand(1, 999999)) or rand(1, 999999), tonumber(ret[4] or rand(0, 1)) or rand(0, 1))
+				palTex = getPalTex(pal, 256)
 				recompileShaders(code)
 			elseif ret[1] == "help" then
-				print("recolor [craziness (0.0-1.0)] [seed] [dark (1/0)]\nhelp")
+				print("recolor [craziness (0.0-1.0)] [seed] [dark (1/0)]\nhelp\nsetfractal [fractal]")
 			elseif ret[1] == "ptest" then
 				if funny == 2 then
 					--turn it off
@@ -1340,7 +1455,7 @@ while not window:shouldClose() do
 					gmp.f_init_set_d(xi2, 0)
 					xo, yo, zoom, xr, xi = xo2, yo2, zoom2, xr2, xi2
 					end
-					local cb = curC(width, height, xo, yo, zoom)
+					local cb = curC(width, height, xo, yo, zoom, nil, nil, radius)
 					if not cb then error("cb failed") end
 					oxo, oyo, oz = 0, 0, 1
 					--for i = 0, width*height*3-1, 3 do print(cb[i], cb[i+1], cb[i+2]) end
@@ -1348,6 +1463,22 @@ while not window:shouldClose() do
 					print(cTex)
 					program = recompileShaders(pngcode)
 				end
+			elseif ret[1] == "setfractal" then
+				if fractals[ret[2] or "PROBABLY GIVE A FRACTAL NAME YOU DUNCE"] then
+					fractal = ret[2]
+					
+					--local t = base()
+					--local code2 = getCode(t)
+					--program = recompileShaders(code2)
+					program = recompileShaders(getCode(base()))
+					print("changed fractal")
+				else
+					local t = ""
+					for k, _ in pairs(fractals) do t = t .. k .. ", " end
+					print("invalid fractal name. Valid fractal names are:\n\n" .. t)
+				end
+			elseif ret[1] == "quaternion" then
+				
 			end
 		end
 	end
@@ -1400,6 +1531,8 @@ while not window:shouldClose() do
 	uniform1f(getUniformLocation(program, "yo"), yo)
 	uniform1f(getUniformLocation(program, "re"), re)
 	uniform1f(getUniformLocation(program, "im"), im)
+	uniform1f(getUniformLocation(program, "uniform_j"), q_j)
+	uniform1f(getUniformLocation(program, "uniform_k"), q_k)
 	--uniform1fv(getUniformLocation(program, "pal"), 3000, pal)
 	--glext.glActiveTexture(glc.GL_TEXTURE0)
 	uniform1f(getUniformLocation(program, "luaswag"), luaswag)
