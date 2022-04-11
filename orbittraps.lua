@@ -10,7 +10,17 @@ return function()
 			return ([[
 				point = vec2(WCEWCW);
 			]]):gsub("WCEWCW", s)
-		end
+		end,
+		Point4D = function(x, y, z, w)
+			return ([[
+				point = vec4(x, y, z, w);
+			]]):gsub("x", x):gsub("y", y):gsub("z", z):gsub("w", w)
+		end,
+		Custom4D = function(s)
+			return ([[
+				point = vec4(WCEWCW);
+			]]):gsub("WCEWCW", s)
+		end,
 	}
 end
 
