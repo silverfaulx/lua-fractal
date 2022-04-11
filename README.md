@@ -21,7 +21,7 @@ controls:
 - Z: switch to C double mode, or re-render the scene if already in it
 - enter: io.read()s a command, either recolor {craziness} {seed} {isdark} for rechanging the colors, or ptest to change it to lua perturbation thing test (does NOT work sowwy)
 - O/P: influence the luaswag uniform for use in textured fractals
-- arrow keys: change RE/IM of the julia set
+- arrow keys: change j and k values of a quaternion fractal (there's only 1 tho)
 
 i think i fixed the thing with the 3000 uniforms lol
 
