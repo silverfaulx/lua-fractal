@@ -26,3 +26,6 @@ controls:
 i think i fixed the thing with the 3000 uniforms lol
 
 have fun and feel free to spam message me if you want something fixed or added or explained, i'll hopefully do my best to do it because i'm likely not doing anything better at the moment!!!!!!
+
+![image](https://user-images.githubusercontent.com/98911034/162662253-f8831db0-32ab-4b20-98b1-1e2b5a4aeb8a.png)
+^when it works properly anyways
